@@ -9,7 +9,16 @@ TRIGGER      = os.getenv("TRIGGER", "bandit").lower()
 
 # --- Health server zodat Render denkt dat app 'leeft'
 class HealthHandler(BaseHTTPRequestHandler):
-        def do_HEAD(self):
+    def do_GET(self):
+        if self.path in ("/", "/health"):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_HEAD(self):
         if self.path in ("/", "/health"):
             self.send_response(200)
             self.end_headers()
@@ -64,6 +73,7 @@ def main():
 if __name__ == "__main__":
     start_health_server()
     main()
+
 
 
 
