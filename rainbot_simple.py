@@ -1,7 +1,7 @@
 import os, time, threading, requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 
+WEBHOOK_URL  = os.getenv("https://discordapp.com/api/webhooks/1434508893874294849/RFxsDrbzJUKLYHL5xn-iIcNcY-iT-nbGx71olQUuWDePDuPXbJJlJurAEAnHJfwfy4kg")                 
 CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
 TIMEOUT_SEC  = int(os.getenv("TIMEOUT_SEC", "15"))
@@ -65,3 +65,4 @@ def main():
 if __name__ == "__main__":
     start_health_server()
     main()
+
