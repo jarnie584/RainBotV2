@@ -5,7 +5,7 @@ WEBHOOK_URL  = os.getenv("https://discordapp.com/api/webhooks/143450889387429484
 CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
 TIMEOUT_SEC  = int(os.getenv("TIMEOUT_SEC", "15"))
-TRIGGER      = os.getenv("TRIGGER", "rain").lower()
+TRIGGER      = os.getenv("TRIGGER", "bandit").lower()
 
 # --- Health server zodat Render denkt dat app 'leeft'
 class HealthHandler(BaseHTTPRequestHandler):
@@ -65,4 +65,5 @@ def main():
 if __name__ == "__main__":
     start_health_server()
     main()
+
 
