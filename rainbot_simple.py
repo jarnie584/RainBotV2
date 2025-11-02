@@ -1,12 +1,15 @@
-import os, time, threading, requests
+import os, time, threading, requests, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+# forceer ongebufferde logs (extra zeker)
+sys.stdout.reconfigure(line_buffering=True)
+
 # ---- ENV
-WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 # <-- ingevuld in Render → Environment
+WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 # <-- zet in Render → Environment
 CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
 TIMEOUT_SEC  = int(os.getenv("TIMEOUT_SEC", "15"))
-TRIGGER      = os.getenv("TRIGGER", "bandit").lower()   # zet later terug naar 'rain' als test lukt
+TRIGGER      = os.getenv("TRIGGER", "bandit").lower()   # zet later terug naar 'rain'
 
 # --- Health server (voor Render web service)
 class HealthHandler(BaseHTTPRequestHandler):
@@ -24,27 +27,27 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_health_server():
     port = int(os.getenv("PORT", "10000"))
     server = HTTPServer(("", port), HealthHandler)
-    print(f"[INFO] Health server running on port {port}")
+    print(f"[INFO] Health server running on port {port}", flush=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
 # --- Discord melding
 def send_discord(msg: str):
     if not WEBHOOK_URL:
-        print("[FOUT] WEBHOOK_URL ontbreekt (zet env var op Render).")
+        print("[FOUT] WEBHOOK_URL ontbreekt (zet env var op Render).", flush=True)
         return
     try:
         r = requests.post(WEBHOOK_URL, json={"content": msg}, timeout=10)
         if r.status_code < 300:
-            print("[OK] Discord-bericht verstuurd.")
+            print("[OK] Discord-bericht verstuurd.", flush=True)
         else:
-            print(f"[FOUT] Discord {r.status_code}: {r.text[:200]}")
+            print(f"[FOUT] Discord {r.status_code}: {r.text[:200]}", flush=True)
     except Exception as e:
-        print(f"[FOUT] Discord-post: {e}")
+        print(f"[FOUT] Discord-post: {e}", flush=True)
 
 def startup_ping():
     send_discord("✅ RainBot opgestart (health ok) – testmelding")
 
-# --- Pagina check (met browserachtige headers + debug)
+# --- Pagina check met debug
 def has_rain() -> bool:
     try:
         headers = {
@@ -53,20 +56,20 @@ def has_rain() -> bool:
             "Accept-Language": "en-US,en;q=0.9",
         }
         r = requests.get(CHECK_URL, timeout=TIMEOUT_SEC, headers=headers)
-        print(f"[DBG] GET {CHECK_URL} -> {r.status_code}, {len(r.text)} bytes")
+        print(f"[DBG] GET {CHECK_URL} -> {r.status_code}, {len(r.text)} bytes", flush=True)
         r.raise_for_status()
         found = TRIGGER in r.text.lower()
-        print(f"[DBG] trigger '{TRIGGER}' found? {found}")
+        print(f"[DBG] trigger '{TRIGGER}' found? {found}", flush=True)
         return found
     except Exception as e:
-        print(f"[WARN] Check mislukt: {e}")
+        print(f"[WARN] Check mislukt: {e}", flush=True)
         return False
 
 # --- Main loop
 def main():
-    print(f"[START] Check={CHECK_URL} | trigger='{TRIGGER}' | elke {POLL_SECONDS}s")
+    print(f"[START] Check={CHECK_URL} | trigger='{TRIGGER}' | elke {POLL_SECONDS}s", flush=True)
     if not WEBHOOK_URL:
-        print("[LET OP] Geen WEBHOOK_URL → geen meldingen!")
+        print("[LET OP] Geen WEBHOOK_URL → geen meldingen!", flush=True)
     notified = False
     while True:
         if has_rain() and not notified:
