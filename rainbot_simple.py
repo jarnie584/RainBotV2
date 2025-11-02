@@ -1,18 +1,21 @@
 import os, time, threading, requests, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# forceer ongebufferde logs (extra zeker)
-sys.stdout.reconfigure(line_buffering=True)
+# ---- log direct flushen
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 # ---- ENV
-USE_PLAYWRIGHT = os.getenv("USE_PLAYWRIGHT", "0").lower() in ("1","true","yes")
-WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 # <-- zet in Render → Environment
-CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
-POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
-TIMEOUT_SEC  = int(os.getenv("TIMEOUT_SEC", "15"))
-TRIGGER      = os.getenv("TRIGGER", "bandit").lower()   # zet later terug naar 'rain'
+WEBHOOK_URL     = os.getenv("WEBHOOK_URL")                      # zet in Render → Environment
+CHECK_URL       = os.getenv("CHECK_URL", "https://bandit.camp")
+POLL_SECONDS    = int(os.getenv("POLL_SECONDS", "30"))
+TIMEOUT_SEC     = int(os.getenv("TIMEOUT_SEC", "15"))
+TRIGGER         = os.getenv("TRIGGER", "rain").lower()
+USE_PLAYWRIGHT  = os.getenv("USE_PLAYWRIGHT", "0").lower() in ("1", "true", "yes")
 
-# --- Health server (voor Render web service)
+# ---- Health server zodat Render je app 'ziet'
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/health"):
@@ -26,12 +29,12 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 def start_health_server():
-    port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)  # <— Belangrijk: 0.0.0.0 ipv ""
+    port = int(os.getenv("PORT", "10000"))  # Render geeft dynamische poort
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
     print(f"[INFO] Health server running on port {port}", flush=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
-# --- Discord melding
+# ---- Discord helpers
 def send_discord(msg: str):
     if not WEBHOOK_URL:
         print("[FOUT] WEBHOOK_URL ontbreekt (zet env var op Render).", flush=True)
@@ -48,8 +51,8 @@ def send_discord(msg: str):
 def startup_ping():
     send_discord("✅ RainBot opgestart (health ok) – testmelding")
 
-# --- Pagina check met debug
-def has_rain() -> bool:
+# ---- Checker met requests
+def has_rain_requests() -> bool:
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -57,33 +60,58 @@ def has_rain() -> bool:
             "Accept-Language": "en-US,en;q=0.9",
         }
         r = requests.get(CHECK_URL, timeout=TIMEOUT_SEC, headers=headers)
-        print(f"[DBG] GET {CHECK_URL} -> {r.status_code}, {len(r.text)} bytes", flush=True)
+        print(f"[DBG] (REQ) GET {CHECK_URL} -> {r.status_code}, {len(r.text)} bytes", flush=True)
         r.raise_for_status()
         found = TRIGGER in r.text.lower()
-        print(f"[DBG] trigger '{TRIGGER}' found? {found}", flush=True)
+        print(f"[DBG] (REQ) trigger '{TRIGGER}' found? {found}", flush=True)
         return found
     except Exception as e:
-        print(f"[WARN] Check mislukt: {e}", flush=True)
+        print(f"[WARN] requests-check mislukt: {e}", flush=True)
         return False
 
-# --- Main loop
+# ---- Checker met Playwright (echte browser)
+def has_rain_playwright() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+            page.set_default_timeout(15000)
+            page.goto(CHECK_URL, wait_until="domcontentloaded")
+            html = page.content()
+            context.close(); browser.close()
+            found = TRIGGER in html.lower()
+            print(f"[DBG] (PW) trigger '{TRIGGER}' found? {found}", flush=True)
+            return found
+    except Exception as e:
+        print(f"[WARN] Playwright-check mislukt: {e}", flush=True)
+        return False
+
+# ---- Main loop
 def main():
     print(f"[START] Check={CHECK_URL} | trigger='{TRIGGER}' | elke {POLL_SECONDS}s", flush=True)
-    if not WEBHOOK_URL:
-        print("[LET OP] Geen WEBHOOK_URL → geen meldingen!", flush=True)
+    print(f"[INFO] Using {'Playwright' if USE_PLAYWRIGHT else 'requests'} checker", flush=True)
+    checker = has_rain_playwright if USE_PLAYWRIGHT else has_rain_requests
+
     notified = False
     while True:
-        if has_rain() and not notified:
-            send_discord("🌧️ Rain gedetecteerd op bandit.camp! (simple)")
-            notified = True
-        elif not has_rain() and notified:
-            notified = False
+        try:
+            if checker() and not notified:
+                send_discord("🌧️ Rain gedetecteerd op bandit.camp! (simple)")
+                notified = True
+            elif not checker() and notified:
+                notified = False
+        except Exception as e:
+            print(f"[ERR] Loop error: {e}", flush=True)
         time.sleep(POLL_SECONDS)
 
 if __name__ == "__main__":
     start_health_server()
-    startup_ping()   # <— stuurt direct een testmelding bij opstart
+    startup_ping()   # 1 testmelding bij start
     main()
-
-
-
