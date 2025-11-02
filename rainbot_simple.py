@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 sys.stdout.reconfigure(line_buffering=True)
 
 # ---- ENV
+USE_PLAYWRIGHT = os.getenv("USE_PLAYWRIGHT", "0").lower() in ("1","true","yes")
 WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 # <-- zet in Render → Environment
 CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
@@ -83,3 +84,4 @@ if __name__ == "__main__":
     start_health_server()
     startup_ping()   # <— stuurt direct een testmelding bij opstart
     main()
+
