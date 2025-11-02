@@ -1,30 +1,25 @@
 import os, time, threading, requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")               
+# ---- ENV
+WEBHOOK_URL  = os.getenv("WEBHOOK_URL")                 # <-- ingevuld in Render → Environment
 CHECK_URL    = os.getenv("CHECK_URL", "https://bandit.camp")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
 TIMEOUT_SEC  = int(os.getenv("TIMEOUT_SEC", "15"))
-TRIGGER      = os.getenv("TRIGGER", "bandit").lower()
+TRIGGER      = os.getenv("TRIGGER", "bandit").lower()   # zet later terug naar 'rain' als test lukt
 
-# --- Health server zodat Render denkt dat app 'leeft'
+# --- Health server (voor Render web service)
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/health"):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"ok")
+            self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
         else:
-            self.send_response(404)
-            self.end_headers()
-
+            self.send_response(404); self.end_headers()
     def do_HEAD(self):
         if self.path in ("/", "/health"):
-            self.send_response(200)
-            self.end_headers()
+            self.send_response(200); self.end_headers()
         else:
-            self.send_response(404)
-            self.end_headers()
+            self.send_response(404); self.end_headers()
 
 def start_health_server():
     port = int(os.getenv("PORT", "10000"))
@@ -46,12 +41,23 @@ def send_discord(msg: str):
     except Exception as e:
         print(f"[FOUT] Discord-post: {e}")
 
-# --- Pagina check
+def startup_ping():
+    send_discord("✅ RainBot opgestart (health ok) – testmelding")
+
+# --- Pagina check (met browserachtige headers + debug)
 def has_rain() -> bool:
     try:
-        r = requests.get(CHECK_URL, timeout=TIMEOUT_SEC, headers={"User-Agent":"RainBotSimple/1"})
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        r = requests.get(CHECK_URL, timeout=TIMEOUT_SEC, headers=headers)
+        print(f"[DBG] GET {CHECK_URL} -> {r.status_code}, {len(r.text)} bytes")
         r.raise_for_status()
-        return TRIGGER in r.text.lower()
+        found = TRIGGER in r.text.lower()
+        print(f"[DBG] trigger '{TRIGGER}' found? {found}")
+        return found
     except Exception as e:
         print(f"[WARN] Check mislukt: {e}")
         return False
@@ -72,9 +78,5 @@ def main():
 
 if __name__ == "__main__":
     start_health_server()
+    startup_ping()   # <— stuurt direct een testmelding bij opstart
     main()
-
-
-
-
-
