@@ -26,8 +26,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 def start_health_server():
-    port = int(os.getenv("PORT", "10000"))  # Render gebruikt dynamische poort
-    server = HTTPServer(("", port), HealthHandler)
+    port = int(os.getenv("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)  # <— Belangrijk: 0.0.0.0 ipv ""
     print(f"[INFO] Health server running on port {port}", flush=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
@@ -84,5 +84,6 @@ if __name__ == "__main__":
     start_health_server()
     startup_ping()   # <— stuurt direct een testmelding bij opstart
     main()
+
 
 
