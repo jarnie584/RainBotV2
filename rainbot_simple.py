@@ -76,19 +76,78 @@ def has_rain_playwright() -> bool:
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"]
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ],
             )
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                locale="en-US",
+                timezone_id="Europe/Amsterdam",
+                viewport={"width": 1366, "height": 768},
+                java_script_enabled=True,
             )
+
+            # Sneller laden: blokkeer zware assets
+            context.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in {"image", "media", "font"}
+                else route.continue_(),
+            )
+
             page = context.new_page()
-            page.set_default_timeout(15000)
-            page.goto(CHECK_URL, wait_until="domcontentloaded")
-            html = page.content()
+            page.set_default_timeout(60000)  # 60s i.p.v. 15s
+
+            html = ""
+            last_err = None
+            # Probeer ook met www.
+            urls = [CHECK_URL, CHECK_URL.replace("https://bandit.camp", "https://www.bandit.camp")]
+
+            for attempt in range(1, 4):  # 3 pogingen
+                for u in urls:
+                    try:
+                        print(f"[DBG] (PW) goto attempt {attempt} url={u}", flush=True)
+                        # 'commit' = zodra headers binnen zijn (minder streng dan domcontentloaded)
+                        page.goto(u, wait_until="commit", referer="https://www.google.com/", timeout=60000)
+                        try:
+                            page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        except Exception:
+                            pass
+                        html = page.content()
+                        print(f"[DBG] (PW) final_url={page.url()}", flush=True)
+                        break
+                    except Exception as e:
+                        last_err = e
+                        print(f"[DBG] (PW) attempt failed for {u}: {e}", flush=True)
+                        time.sleep(2)
+                if html:
+                    break
+
             context.close(); browser.close()
-            found = TRIGGER in html.lower()
-            print(f"[DBG] (PW) trigger '{TRIGGER}' found? {found}", flush=True)
+
+            if not html:
+                print(f"[WARN] Playwright-check mislukt: {last_err}", flush=True)
+                return False
+
+            lower = html.lower()
+            print(f"[DBG] (PW) html head: {lower[:300].replace('\\n',' ')}", flush=True)
+
+            # Meerdere triggers toestaan via TRIGGERS (komma-gescheiden) + TRIGGER fallback
+            words = [os.getenv("TRIGGER","").lower()] + [
+                w.strip().lower() for w in os.getenv("TRIGGERS","").split(",") if w.strip()
+            ]
+            words = [w for w in words if w]
+            found = any(w in lower for w in words) if words else False
+            print(f"[DBG] (PW) triggers={words} -> found? {found}", flush=True)
             return found
+
     except Exception as e:
         print(f"[WARN] Playwright-check mislukt: {e}", flush=True)
         return False
@@ -115,3 +174,4 @@ if __name__ == "__main__":
     start_health_server()
     startup_ping()   # 1 testmelding bij start
     main()
+
